@@ -278,6 +278,12 @@ function viewCachedBrief() {
   showView('brief');
 }
 
+// Back to profile — re-opens with fresh cache check so buttons are always correct
+function backToProfile() {
+  if (currentClient) openClientProfile(currentClient.id);
+  else showView('profile');
+}
+
 async function generateBrief(clientId) {
   showView('brief');
   document.getElementById('brief-content').innerHTML = `
@@ -301,7 +307,7 @@ async function generateBrief(clientId) {
       <div class="generating-state">
         <div style="font-size:32px">⚠️</div>
         <div style="font-size:16px;margin:12px 0">${e.message}</div>
-        <button class="btn btn-ghost" onclick="showView('profile')">← Back to Profile</button>
+        <button class="btn btn-ghost" onclick="backToProfile()">← Back to Profile</button>
       </div>`;
   }
 }
@@ -332,7 +338,7 @@ async function renderBrief(data) {
       </div>
       <div style="display:flex;gap:10px;align-items:center">
         <button class="btn btn-ghost" onclick="openFeedbackModal()" title="Log post-meeting notes for AI to use next time">📝 Post-Meeting Notes</button>
-        <button class="btn btn-ghost" onclick="showView('profile')">← Back to Profile</button>
+        <button class="btn btn-ghost" onclick="backToProfile()">← Back to Profile</button>
       </div>
     </div>
 
