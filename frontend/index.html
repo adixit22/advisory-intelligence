@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advisory Intelligence | AI Wealth Management</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">AI</div>
+        <div>
+          <div class="brand-name">Advisory<br>Intelligence</div>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" onclick="showView('clients')">
+          <span class="nav-icon">👥</span> Client Book
+        </button>
+        <button class="nav-item" onclick="showView('market')">
+          <span class="nav-icon">📈</span> Market Pulse
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="advisor-badge">
+          <div class="advisor-avatar">AKD</div>
+          <div>
+            <div class="advisor-name">AKD Advisor</div>
+            <div class="advisor-role">Senior Wealth Advisor</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+
+      <!-- HEADER -->
+      <header class="topbar">
+        <div class="topbar-title" id="topbar-title">Client Book</div>
+        <div class="topbar-actions">
+          <div class="market-ticker" id="market-ticker">Loading market data...</div>
+        </div>
+      </header>
+
+      <!-- VIEWS -->
+
+      <!-- CLIENT ROSTER VIEW -->
+      <section id="view-clients" class="view active">
+        <div class="view-header">
+          <div>
+            <h2>Your Clients</h2>
+            <p class="view-sub">Select a client to view their profile and generate a personalized brief</p>
+          </div>
+          <div class="search-box">
+            <input type="text" id="client-search" placeholder="Search clients..." oninput="filterClients()" />
+          </div>
+        </div>
+        <div class="client-grid" id="client-grid">
+          <div class="loading-state">Loading clients...</div>
+        </div>
+      </section>
+
+      <!-- MARKET VIEW -->
+      <section id="view-market" class="view">
+        <div class="view-header">
+          <div>
+            <h2>Market Pulse</h2>
+            <p class="view-sub">Live market conditions affecting your clients' portfolios</p>
+          <p id="market-last-updated" style="font-size:12px;color:var(--text-muted);margin-top:4px"></p>
+          </div>
+          <button class="btn btn-ghost" onclick="loadMarketData()">↻ Refresh</button>
+        </div>
+        <div id="market-cards" class="market-grid">
+          <div class="loading-state">Fetching live data...</div>
+        </div>
+        <div class="market-narrative-box" id="market-narrative-box" style="display:none">
+          <div class="narrative-label">Market Summary</div>
+          <p id="market-narrative-text"></p>
+        </div>
+      </section>
+
+      <!-- CLIENT PROFILE VIEW -->
+      <section id="view-profile" class="view">
+        <div class="profile-back">
+          <button class="btn btn-ghost" onclick="showView('clients')">← Back to Client Book</button>
+        </div>
+        <div id="profile-content"></div>
+      </section>
+
+      <!-- BRIEF VIEW -->
+      <section id="view-brief" class="view">
+        <div class="profile-back">
+          <button class="btn btn-ghost" onclick="showView('profile')">← Back to Profile</button>
+        </div>
+        <div id="brief-content"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="/static/app.js?v=4"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+cache/
+feedback/
+videos/
+*.mp4
+.DS_Store
