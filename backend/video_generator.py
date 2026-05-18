@@ -302,13 +302,13 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
     lines = wrap_text(market_impact, font_body, 1100, draw)
     draw.text((80, 143), lines[0] if lines else "", font=font_body, fill=WHITE)
 
-    # Advisor talking points
+    # Advisor talking points — show 3 only so they always fit above the banner
     draw.text((60, 200), "Advisor Talking Points", font=load_font(22, bold=True), fill=ACCENT_BLUE)
     talking_points = brief.get("advisor_talking_points", [])
 
     dot_colors = [ACCENT_GREEN, ACCENT_BLUE, ACCENT_AMBER, (236, 72, 153)]
     y_tp = 238
-    for i, point in enumerate(talking_points[:4]):
+    for i, point in enumerate(talking_points[:3]):
         color = dot_colors[i % len(dot_colors)]
         draw.ellipse([60, y_tp + 6, 74, y_tp + 20], fill=color)
         lines = wrap_text(point, font_body, 1100, draw)
@@ -316,15 +316,15 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
             draw.text((90, y_tp + j * 26), line, font=font_body, fill=WHITE if j == 0 else GRAY_LIGHT)
         y_tp += 70 + (len(lines[:2]) - 1) * 26
 
-    # Next action
+    # Next action banner — tall enough for 3 lines, with white label on green bg
     next_action = brief.get("next_action", "")
-    draw_rounded_rect(draw, [60, 570, 1220, 650], 12, (16, 185, 129, 30))
-    draw.rectangle([60, 570, 68, 650], fill=ACCENT_GREEN)
-    draw.text((85, 580), "Recommended Next Action", font=load_font(18, bold=True), fill=ACCENT_GREEN)
-    lines = wrap_text(next_action, font_body, 1100, draw)
-    draw.text((85, 608), lines[0] if lines else "", font=font_body, fill=WHITE)
-    if len(lines) > 1:
-        draw.text((85, 630), lines[1], font=font_body, fill=WHITE)
+    banner_y0, banner_y1 = 545, 665
+    draw_rounded_rect(draw, [60, banner_y0, 1220, banner_y1], 12, ACCENT_GREEN)
+    draw.text((85, banner_y0 + 10), "Recommended Next Action",
+              font=load_font(18, bold=True), fill=WHITE)
+    na_lines = wrap_text(next_action, font_body, 1110, draw)
+    for k, line in enumerate(na_lines[:3]):
+        draw.text((85, banner_y0 + 38 + k * 28), line, font=font_body, fill=WHITE)
 
     draw.rectangle([0, HEIGHT - 4, WIDTH, HEIGHT], fill=ACCENT_BLUE)
     return img
@@ -415,6 +415,20 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
             " ".join(words[chunk * 2:chunk * 3]),
             " ".join(words[chunk * 3:]),
         ]
+
+    # Always rebuild slide 4 narration from the exact data shown on the slide.
+    # This prevents Claude's pre-generated script from drifting away from the visuals.
+    _tps = brief.get("advisor_talking_points", [])
+    _impact = brief.get("market_impact_summary", "")
+    _action = brief.get("next_action", "")
+    _s4_parts = []
+    if _impact:
+        _s4_parts.append(_impact)
+    for _tp in _tps[:3]:          # only the 3 points actually drawn on the slide
+        _s4_parts.append(_tp)
+    if _action:
+        _s4_parts.append(f"Recommended next action: {_action}")
+    parts[3] = " ".join(_s4_parts)
 
     slides_fns = [make_cover_slide, make_performance_slide, make_market_slide, make_insights_slide]
     slide_args = [(client,), (client,), (market_data,), (client, brief)]
