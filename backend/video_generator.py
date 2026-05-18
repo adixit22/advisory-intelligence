@@ -117,6 +117,30 @@ def _clean_display(text: str) -> str:
     return text
 
 
+def _shorten_tp_display(text: str, max_chars: int = 100) -> str:
+    """
+    Truncate a long talking point to its first meaningful clause for slide display.
+    Cuts at ' - ', ' using ', '; ' etc. so the displayed text ends at a natural break,
+    not mid-sentence. Adds '...' when truncated.
+    """
+    text = _clean_display(text)
+    # Common separators that signal methodology/detail starting — cut before these
+    stop_phrases = [' - ', '; ', ' using ', ' through ', ' while ', ' targeting ',
+                    ' consistent with ', ' building ']
+    earliest = len(text)
+    for sep in stop_phrases:
+        idx = text.find(sep)
+        if 25 < idx < earliest:  # Must have meaningful content before the cut
+            earliest = idx
+    if earliest < len(text):
+        return text[:earliest].rstrip('.,;:') + '...'
+    # No separator found — truncate at max_chars at a word boundary
+    if len(text) > max_chars:
+        cut = text[:max_chars].rfind(' ')
+        return text[:max(cut, 40)].rstrip('.,;:') + '...'
+    return text
+
+
 def wrap_text(text, font, max_width, draw):
     words = text.split()
     lines = []
@@ -364,7 +388,9 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
     for i, point in enumerate(talking_points[:3]):
         color = dot_colors[i % len(dot_colors)]
         draw.ellipse([60, y_tp + 6, 74, y_tp + 20], fill=color)
-        lines = wrap_text(_clean_display(point), font_body, 1100, draw)
+        # Use shortened display version so each bullet ends at a natural break point
+        display_text = _shorten_tp_display(point)
+        lines = wrap_text(display_text, font_body, 1100, draw)
         for j, line in enumerate(lines[:2]):
             draw.text((90, y_tp + j * 26), line, font=font_body, fill=WHITE if j == 0 else GRAY_LIGHT)
         y_tp += 70 + (len(lines[:2]) - 1) * 26
@@ -484,53 +510,83 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
         text = _re.sub(r"\bhe\b",  "you",  text)
         return text
 
-    def _paraphrase_tp(text: str, idx: int) -> str:
-        """
-        Paraphrase a verbose talking point into a natural spoken sentence.
-        Keeps the core action + key numbers, drops methodology/rationale detail.
-        """
-        _voice_prefixes = ["We recommend", "We also suggest", "And we recommend"]
-        prefix = _voice_prefixes[idx % len(_voice_prefixes)]
+    # Gerund converter so "Deploy" → "deploying" after "we recommend"
+    _gerund_exc = {
+        'commit': 'committing', 'run': 'running', 'set': 'setting',
+        'get': 'getting', 'put': 'putting', 'begin': 'beginning',
+        'plan': 'planning', 'add': 'adding', 'cut': 'cutting',
+        'drop': 'dropping', 'sit': 'sitting', 'hit': 'hitting',
+    }
+    def _to_gerund(word: str) -> str:
+        w = word.lower()
+        if w in _gerund_exc:
+            return _gerund_exc[w]
+        if w.endswith('ing'):
+            return w
+        if w.endswith('e') and len(w) > 2 and not w.endswith('ee'):
+            return w[:-1] + 'ing'
+        return w + 'ing'
 
-        # Clean text first — second-person + speech-friendly numbers
+    def _tp_to_speech(text: str, idx: int) -> str:
+        """
+        Convert a verbose talking point to a short, natural spoken sentence.
+        Extracts just the core action + primary amount + destination (≤ 16 words),
+        converts the imperative verb to gerund, and prepends an ordinal.
+        """
+        ordinals = ["First,", "Second,", "And third,"]
+        prefix = ordinals[idx % len(ordinals)]
+
         cleaned = _fmt_speech(_to_2p(text))
 
-        # Cut before methodology/rationale phrases that make narration robotic
-        _stop = [
-            r'\busing\b', r'\bthrough\b', r'\bwhile\b', r'\bto manage\b',
-            r'\btargeting\b', r'\bconsistent with\b', r'\bto capture\b',
-            r'\bbuilding\b', r'\bproviding\b', r'\bthis aligns\b',
-        ]
-        words = cleaned.split()
-        cut_at = len(words)
-        for pat in _stop:
-            for wi, w in enumerate(words[8:], start=8):
-                if _re.match(pat, w, _re.IGNORECASE):
-                    cut_at = min(cut_at, wi)
-                    break
+        # Cut at first clause separator so we only speak the core action
+        stop_seps = [' - ', ' using ', ' through ', ' while ', ' targeting ',
+                     ' consistent with ', ' building ', '; ']
+        earliest = len(cleaned)
+        for sep in stop_seps:
+            pos = cleaned.find(sep)
+            if 20 < pos < earliest:
+                earliest = pos
 
-        core = " ".join(words[:min(cut_at, 28)]).rstrip('.,;')
-        # Make the first word lowercase so "Redeploy" → "we recommend redeploy"
-        core = core[0].lower() + core[1:] if core else core
-        return f"{prefix} {core}."
+        core = cleaned[:earliest].strip()
+
+        # Hard cap at 16 words so we never over-speak
+        words = core.split()
+        core = ' '.join(words[:16]).rstrip('.,;:')
+
+        # Convert first word to gerund ("Deploy" → "deploying")
+        parts_core = core.split()
+        if parts_core:
+            parts_core[0] = _to_gerund(parts_core[0])
+        core = ' '.join(parts_core)
+
+        return f"{prefix} we recommend {core}."
 
     _tps    = brief.get("advisor_talking_points", [])
     _impact = brief.get("market_impact_summary",  "")
     _action = brief.get("next_action",             "")
 
-    _s4 = []
+    # Build a short, conversational slide 4 narration — NOT reading bullets word-for-word
+    _s4 = ["Let me walk you through our key insights and recommendations."]
+
     if _impact:
-        _s4.append(_fmt_speech(_to_2p(_impact)))
-    for i, _tp in enumerate(_tps[:3]):
-        _s4.append(_paraphrase_tp(_tp, i))
+        # Max 20 words of market context as a spoken intro
+        _mi_words = _fmt_speech(_to_2p(_impact)).split()
+        _mi_short = ' '.join(_mi_words[:20]).rstrip('.,;') + '.'
+        _s4.append(_mi_short)
+
+    if _tps:
+        _s4.append(f"Based on this, here are our {"three" if len(_tps) >= 3 else "key"} recommendations.")
+        for i, _tp in enumerate(_tps[:3]):
+            _s4.append(_tp_to_speech(_tp, i))
+
     if _action:
-        # Summarise the action to one clean sentence
         _act_clean = _fmt_speech(_to_2p(_action))
         _act_words = _act_clean.split()
-        _act_short = " ".join(_act_words[:30]).rstrip('.,;') + "."
-        _s4.append(f"Your next step is to {_act_short[0].lower() + _act_short[1:]}")
-    _s4.append("I look forward to discussing this with you at our next meeting.")
-    parts[3] = " ".join(_s4)
+        _act_short = ' '.join(_act_words[:15]).rstrip('.,;')
+        _s4.append(f"Your next step is to {_act_short[0].lower()}{_act_short[1:]}.")
+
+    _s4.append("We look forward to discussing all of this with you at our next meeting.")
+    parts[3] = ' '.join(_s4)
 
     slides_fns = [make_cover_slide, make_performance_slide, make_market_slide, make_insights_slide]
     slide_args = [(client,), (client,), (market_data,), (client, brief)]
