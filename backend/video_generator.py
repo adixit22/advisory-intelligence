@@ -293,21 +293,22 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
     draw.text((60, 45), "Key Insights & Next Steps", font=font_title, fill=WHITE)
     draw.rectangle([60, 90, 420, 93], fill=ACCENT_BLUE)
 
-    # Market impact
+    # Market impact — taller box so 2 lines always fit
     font_label = load_font(18)
     font_body = load_font(19)
     market_impact = brief.get("market_impact_summary", "")
-    draw_rounded_rect(draw, [60, 110, 1220, 175], 10, BG_CARD)
-    draw.text((80, 120), "Market Impact", font=font_label, fill=ACCENT_AMBER)
-    lines = wrap_text(market_impact, font_body, 1100, draw)
-    draw.text((80, 143), lines[0] if lines else "", font=font_body, fill=WHITE)
+    draw_rounded_rect(draw, [60, 110, 1220, 195], 10, BG_CARD)
+    draw.text((80, 118), "Market Impact", font=font_label, fill=ACCENT_AMBER)
+    mi_lines = wrap_text(market_impact, font_body, 1110, draw)
+    for k, line in enumerate(mi_lines[:2]):
+        draw.text((80, 140 + k * 26), line, font=font_body, fill=WHITE)
 
     # Advisor talking points — show 3 only so they always fit above the banner
-    draw.text((60, 200), "Advisor Talking Points", font=load_font(22, bold=True), fill=ACCENT_BLUE)
+    draw.text((60, 212), "Advisor Talking Points", font=load_font(22, bold=True), fill=ACCENT_BLUE)
     talking_points = brief.get("advisor_talking_points", [])
 
     dot_colors = [ACCENT_GREEN, ACCENT_BLUE, ACCENT_AMBER, (236, 72, 153)]
-    y_tp = 238
+    y_tp = 250
     for i, point in enumerate(talking_points[:3]):
         color = dot_colors[i % len(dot_colors)]
         draw.ellipse([60, y_tp + 6, 74, y_tp + 20], fill=color)
@@ -416,19 +417,48 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
             " ".join(words[chunk * 3:]),
         ]
 
-    # Always rebuild slide 4 narration from the exact data shown on the slide.
-    # This prevents Claude's pre-generated script from drifting away from the visuals.
-    _tps = brief.get("advisor_talking_points", [])
-    _impact = brief.get("market_impact_summary", "")
-    _action = brief.get("next_action", "")
-    _s4_parts = []
+    # Always rebuild slide 4 narration — conversational, second-person, not word-for-word.
+    import re as _re
+
+    first_name = client.get("name", "").split()[0]
+
+    def _to_second_person(text: str) -> str:
+        """Replace client name and third-person pronouns with second-person."""
+        if first_name:
+            text = _re.sub(rf"\b{_re.escape(first_name)}'s\b", "your", text, flags=_re.IGNORECASE)
+            text = _re.sub(rf"\b{_re.escape(first_name)}\b",   "you",  text, flags=_re.IGNORECASE)
+        text = _re.sub(r"\bhis\b", "your", text)
+        text = _re.sub(r"\bhim\b", "you",  text)
+        text = _re.sub(r"\bhe\b",  "you",  text)
+        return text
+
+    def _first_clause(text: str, max_words: int = 22) -> str:
+        """Take the first natural clause — avoids reading the full verbose bullet."""
+        words = text.split()
+        if len(words) <= max_words:
+            return text
+        chunk = " ".join(words[:max_words])
+        for sep in [",", ";"]:
+            idx = chunk.rfind(sep)
+            if idx > len(chunk) * 0.55:
+                return chunk[:idx]
+        return chunk
+
+    _tps    = brief.get("advisor_talking_points", [])
+    _impact = brief.get("market_impact_summary",  "")
+    _action = brief.get("next_action",             "")
+
+    _s4 = []
     if _impact:
-        _s4_parts.append(_impact)
-    for _tp in _tps[:3]:          # only the 3 points actually drawn on the slide
-        _s4_parts.append(_tp)
+        _s4.append(_to_second_person(_impact))
+    _transitions = ["Here's what we recommend.", "Next,", "And finally,"]
+    for i, _tp in enumerate(_tps[:3]):
+        _clause = _first_clause(_to_second_person(_tp))
+        _prefix = _transitions[i] if i < len(_transitions) else ""
+        _s4.append(f"{_prefix} {_clause}.".strip())
     if _action:
-        _s4_parts.append(f"Recommended next action: {_action}")
-    parts[3] = " ".join(_s4_parts)
+        _s4.append(f"Your recommended next step: {_to_second_person(_first_clause(_action, max_words=30))}.")
+    parts[3] = " ".join(_s4)
 
     slides_fns = [make_cover_slide, make_performance_slide, make_market_slide, make_insights_slide]
     slide_args = [(client,), (client,), (market_data,), (client, brief)]
