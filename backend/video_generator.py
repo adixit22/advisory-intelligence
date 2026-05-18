@@ -107,6 +107,16 @@ def _fmt_speech(text: str) -> str:
     return text
 
 
+def _clean_display(text: str) -> str:
+    """Replace Unicode chars Arial/DejaVu can't render with safe ASCII equivalents."""
+    import re
+    # Numeric ranges: $2.5–$3M, 4–6 months → use "to"
+    text = re.sub(r'(\d)\s*[–—–—■⨂�⊠□■]\s*(\$|\d)', r'\1 to \2', text)
+    # Any remaining unprintable dash-like chars → plain hyphen
+    text = re.sub(r'[–—–—■⨂�⊠□■]', '-', text)
+    return text
+
+
 def wrap_text(text, font, max_width, draw):
     words = text.split()
     lines = []
@@ -341,7 +351,7 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
     market_impact = brief.get("market_impact_summary", "")
     draw_rounded_rect(draw, [60, 110, 1220, 220], 10, BG_CARD)
     draw.text((80, 118), "Market Impact", font=font_label, fill=ACCENT_AMBER)
-    mi_lines = wrap_text(market_impact, font_body, 1110, draw)
+    mi_lines = wrap_text(_clean_display(market_impact), font_body, 1110, draw)
     for k, line in enumerate(mi_lines[:3]):
         draw.text((80, 140 + k * 26), line, font=font_body, fill=WHITE)
 
@@ -354,20 +364,20 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
     for i, point in enumerate(talking_points[:3]):
         color = dot_colors[i % len(dot_colors)]
         draw.ellipse([60, y_tp + 6, 74, y_tp + 20], fill=color)
-        lines = wrap_text(point, font_body, 1100, draw)
+        lines = wrap_text(_clean_display(point), font_body, 1100, draw)
         for j, line in enumerate(lines[:2]):
             draw.text((90, y_tp + j * 26), line, font=font_body, fill=WHITE if j == 0 else GRAY_LIGHT)
         y_tp += 70 + (len(lines[:2]) - 1) * 26
 
     # Next action banner — tall enough for 3 lines, with white label on green bg
     next_action = brief.get("next_action", "")
-    banner_y0, banner_y1 = 565, 682
+    banner_y0, banner_y1 = 560, 700
     draw_rounded_rect(draw, [60, banner_y0, 1220, banner_y1], 12, ACCENT_GREEN)
     draw.text((85, banner_y0 + 10), "Recommended Next Action",
               font=load_font(18, bold=True), fill=WHITE)
-    na_lines = wrap_text(next_action, font_body, 1110, draw)
+    na_lines = wrap_text(_clean_display(next_action), font_body, 1110, draw)
     for k, line in enumerate(na_lines[:3]):
-        draw.text((85, banner_y0 + 38 + k * 28), line, font=font_body, fill=WHITE)
+        draw.text((85, banner_y0 + 36 + k * 30), line, font=font_body, fill=WHITE)
 
     draw.rectangle([0, HEIGHT - 4, WIDTH, HEIGHT], fill=ACCENT_BLUE)
     return img
