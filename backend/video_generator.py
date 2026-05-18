@@ -511,20 +511,32 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
         text = _re.sub(r"\bhe\b",  "you",  text)
         return text
 
-    # Slide 4 voice-over: read exactly what is displayed on the slide.
+    # Slide 4 voice-over: read exactly what is displayed on the slide,
+    # wrapped with natural transition phrases so the narration flows.
     # Same bullet source as make_insights_slide — video_talking_points if present, else advisor_talking_points.
-    # Only _fmt_speech is applied so numbers/currencies are spoken correctly.
     _tps    = brief.get("video_talking_points") or brief.get("advisor_talking_points", [])
     _impact = brief.get("market_impact_summary", "")
     _action = brief.get("next_action",           "")
 
-    _s4 = []
+    _bullet_prefixes = ["We recommend", "We also suggest", "And we recommend"]
+
+    _s4 = ["Now let's move to key insights, recommendations, and next steps for you."]
+
     if _impact:
+        _s4.append("Here is how today's markets are impacting your portfolio.")
         _s4.append(_fmt_speech(_to_2p(_impact)))
-    for _tp in _tps[:3]:
-        _s4.append(_fmt_speech(_to_2p(_tp)))
+
+    if _tps:
+        _s4.append("Here are our recommendations.")
+        for i, _tp in enumerate(_tps[:3]):
+            prefix = _bullet_prefixes[i % len(_bullet_prefixes)]
+            _s4.append(f"{prefix} — {_fmt_speech(_to_2p(_tp))}")
+
     if _action:
+        _s4.append("And your next step would be:")
         _s4.append(_fmt_speech(_to_2p(_action)))
+
+    _s4.append("I look forward to discussing this with you at our next meeting.")
     parts[3] = ' '.join(_s4)
 
     slides_fns = [make_cover_slide, make_performance_slide, make_market_slide, make_insights_slide]
