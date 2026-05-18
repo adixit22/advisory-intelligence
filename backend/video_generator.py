@@ -355,8 +355,8 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
     for k, line in enumerate(mi_lines[:3]):
         draw.text((80, 140 + k * 26), line, font=font_body, fill=WHITE)
 
-    # Advisor talking points — show 3 only so they always fit above the banner
-    draw.text((60, 235), "Advisor Talking Points", font=load_font(22, bold=True), fill=ACCENT_BLUE)
+    # Talking points — show 3 only so they always fit above the banner
+    draw.text((60, 235), "Our Recommendations", font=load_font(22, bold=True), fill=ACCENT_BLUE)
     talking_points = brief.get("advisor_talking_points", [])
 
     dot_colors = [ACCENT_GREEN, ACCENT_BLUE, ACCENT_AMBER, (236, 72, 153)]
@@ -373,7 +373,7 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
     next_action = brief.get("next_action", "")
     banner_y0, banner_y1 = 560, 700
     draw_rounded_rect(draw, [60, banner_y0, 1220, banner_y1], 12, ACCENT_GREEN)
-    draw.text((85, banner_y0 + 10), "Recommended Next Action",
+    draw.text((85, banner_y0 + 10), "Next Action",
               font=load_font(18, bold=True), fill=WHITE)
     na_lines = wrap_text(_clean_display(next_action), font_body, 1110, draw)
     for k, line in enumerate(na_lines[:3]):
@@ -484,20 +484,35 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
         text = _re.sub(r"\bhe\b",  "you",  text)
         return text
 
-    def _first_sentence(text: str, max_words: int = 45) -> str:
-        """Return the first complete sentence, capped at max_words."""
-        m = _re.search(r'\.\s', text)
-        if m and len(text[:m.start()].split()) <= max_words:
-            return text[:m.start() + 1]
-        words = text.split()
-        if len(words) <= max_words:
-            return text
-        chunk = " ".join(words[:max_words])
-        for sep in [",", ";"]:
-            idx = chunk.rfind(sep)
-            if idx > len(chunk) * 0.6:
-                return chunk[:idx] + "."
-        return chunk + "."
+    def _paraphrase_tp(text: str, idx: int) -> str:
+        """
+        Paraphrase a verbose talking point into a natural spoken sentence.
+        Keeps the core action + key numbers, drops methodology/rationale detail.
+        """
+        _voice_prefixes = ["We recommend", "We also suggest", "And we recommend"]
+        prefix = _voice_prefixes[idx % len(_voice_prefixes)]
+
+        # Clean text first — second-person + speech-friendly numbers
+        cleaned = _fmt_speech(_to_2p(text))
+
+        # Cut before methodology/rationale phrases that make narration robotic
+        _stop = [
+            r'\busing\b', r'\bthrough\b', r'\bwhile\b', r'\bto manage\b',
+            r'\btargeting\b', r'\bconsistent with\b', r'\bto capture\b',
+            r'\bbuilding\b', r'\bproviding\b', r'\bthis aligns\b',
+        ]
+        words = cleaned.split()
+        cut_at = len(words)
+        for pat in _stop:
+            for wi, w in enumerate(words[8:], start=8):
+                if _re.match(pat, w, _re.IGNORECASE):
+                    cut_at = min(cut_at, wi)
+                    break
+
+        core = " ".join(words[:min(cut_at, 28)]).rstrip('.,;')
+        # Make the first word lowercase so "Redeploy" → "we recommend redeploy"
+        core = core[0].lower() + core[1:] if core else core
+        return f"{prefix} {core}."
 
     _tps    = brief.get("advisor_talking_points", [])
     _impact = brief.get("market_impact_summary",  "")
@@ -506,15 +521,15 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
     _s4 = []
     if _impact:
         _s4.append(_fmt_speech(_to_2p(_impact)))
-    _transitions = ["Here's what we recommend.", "Next,", "And finally,"]
     for i, _tp in enumerate(_tps[:3]):
-        _sentence = _first_sentence(_fmt_speech(_to_2p(_tp)))
-        _prefix = _transitions[i] if i < len(_transitions) else ""
-        _s4.append(f"{_prefix} {_sentence}".strip())
+        _s4.append(_paraphrase_tp(_tp, i))
     if _action:
-        _s4.append(f"Your recommended next step: {_fmt_speech(_to_2p(_first_sentence(_action, max_words=35)))}")
-    # Warm closing — avoids the abrupt cut-off
-    _s4.append(f"I look forward to discussing this with you at our next meeting.")
+        # Summarise the action to one clean sentence
+        _act_clean = _fmt_speech(_to_2p(_action))
+        _act_words = _act_clean.split()
+        _act_short = " ".join(_act_words[:30]).rstrip('.,;') + "."
+        _s4.append(f"Your next step is to {_act_short[0].lower() + _act_short[1:]}")
+    _s4.append("I look forward to discussing this with you at our next meeting.")
     parts[3] = " ".join(_s4)
 
     slides_fns = [make_cover_slide, make_performance_slide, make_market_slide, make_insights_slide]
