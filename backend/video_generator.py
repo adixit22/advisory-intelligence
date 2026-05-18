@@ -511,79 +511,20 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
         text = _re.sub(r"\bhe\b",  "you",  text)
         return text
 
-    # Gerund converter so "Deploy" → "deploying" after "we recommend"
-    _gerund_exc = {
-        'commit': 'committing', 'run': 'running', 'set': 'setting',
-        'get': 'getting', 'put': 'putting', 'begin': 'beginning',
-        'plan': 'planning', 'add': 'adding', 'cut': 'cutting',
-        'drop': 'dropping', 'sit': 'sitting', 'hit': 'hitting',
-    }
-    def _to_gerund(word: str) -> str:
-        w = word.lower()
-        if w in _gerund_exc:
-            return _gerund_exc[w]
-        if w.endswith('ing'):
-            return w
-        if w.endswith('e') and len(w) > 2 and not w.endswith('ee'):
-            return w[:-1] + 'ing'
-        return w + 'ing'
+    # Slide 4 voice-over: read exactly what is displayed on the slide.
+    # Same bullet source as make_insights_slide — video_talking_points if present, else advisor_talking_points.
+    # Only _fmt_speech is applied so numbers/currencies are spoken correctly.
+    _tps    = brief.get("video_talking_points") or brief.get("advisor_talking_points", [])
+    _impact = brief.get("market_impact_summary", "")
+    _action = brief.get("next_action",           "")
 
-    def _tp_to_speech(text: str, idx: int) -> str:
-        """
-        Convert a verbose talking point into a natural spoken sentence.
-        Cuts at first clause separator to drop methodology/rationale,
-        converts the imperative verb to gerund, caps at 28 words.
-        """
-        ordinals = ["First,", "Second,", "And third,"]
-        prefix = ordinals[idx % len(ordinals)]
-
-        cleaned = _fmt_speech(_to_2p(text))
-
-        # Cut at first clause separator so we drop methodology details
-        stop_seps = [' - ', ' using ', ' through ', ' while ', ' targeting ',
-                     ' consistent with ', ' building ', '; ']
-        earliest = len(cleaned)
-        for sep in stop_seps:
-            pos = cleaned.find(sep)
-            if 20 < pos < earliest:
-                earliest = pos
-
-        core = cleaned[:earliest].strip()
-
-        # Cap at 28 words
-        words = core.split()
-        core = ' '.join(words[:28]).rstrip('.,;:')
-
-        # Convert first word to gerund ("Deploy" → "deploying")
-        parts_core = core.split()
-        if parts_core:
-            parts_core[0] = _to_gerund(parts_core[0])
-        core = ' '.join(parts_core)
-
-        return f"{prefix} we recommend {core}."
-
-    _tps    = brief.get("advisor_talking_points", [])
-    _impact = brief.get("market_impact_summary",  "")
-    _action = brief.get("next_action",             "")
-
-    # Build a conversational slide 4 narration — paraphrase, don't read bullets
-    _s4 = ["Let me walk you through our key insights and recommendations."]
-
+    _s4 = []
     if _impact:
         _s4.append(_fmt_speech(_to_2p(_impact)))
-
-    if _tps:
-        _s4.append(f"Based on this, here are our {'three' if len(_tps) >= 3 else 'key'} recommendations.")
-        for i, _tp in enumerate(_tps[:3]):
-            _s4.append(_tp_to_speech(_tp, i))
-
+    for _tp in _tps[:3]:
+        _s4.append(_fmt_speech(_to_2p(_tp)))
     if _action:
-        _act_clean = _fmt_speech(_to_2p(_action))
-        _act_words = _act_clean.split()
-        _act_short = ' '.join(_act_words[:30]).rstrip('.,;')
-        _s4.append(f"Your next step is to {_act_short[0].lower()}{_act_short[1:]}.")
-
-    _s4.append("We look forward to discussing all of this with you at our next meeting.")
+        _s4.append(_fmt_speech(_to_2p(_action)))
     parts[3] = ' '.join(_s4)
 
     slides_fns = [make_cover_slide, make_performance_slide, make_market_slide, make_insights_slide]
