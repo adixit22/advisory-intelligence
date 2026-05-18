@@ -93,6 +93,12 @@ Generate the following JSON with EXACTLY these keys. The four slide scripts must
     "Talking point 4 — specific, actionable"
   ],
 
+  "video_talking_points": [
+    "Slide bullet 1 — ONE sentence, max 15 words. Lead with the action verb and the primary dollar figure only. Drop all methodology, rationale, and sub-targets.",
+    "Slide bullet 2 — same format: action + key number, nothing else.",
+    "Slide bullet 3 — same format: action + key number, nothing else."
+  ],
+
   "slide_1_script": "30-40 spoken words ONLY for the cover slide. Warm greeting using {client['name']}'s first name, mention their role as {client['occupation']}, state their portfolio value of ${client['aum']:,.0f}, and their {client['risk_profile']} risk profile. Nothing else — this slide only shows identity and AUM.",
 
   "slide_2_script": "70-90 spoken words ONLY for the performance slide. Discuss the {client['ytd_return']}% YTD return vs the {client['benchmark_return']}% benchmark. Name the specific holdings shown ({top_holdings}) and explain which are driving the performance. Keep it tightly tied to the numbers on screen.",

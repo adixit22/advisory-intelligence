@@ -379,17 +379,18 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
     for k, line in enumerate(mi_lines[:3]):
         draw.text((80, 140 + k * 26), line, font=font_body, fill=WHITE)
 
-    # Talking points — show 3 only so they always fit above the banner
+    # Talking points — prefer video_talking_points (short, slide-ready) over full advisor bullets
     draw.text((60, 235), "Our Recommendations", font=load_font(22, bold=True), fill=ACCENT_BLUE)
-    talking_points = brief.get("advisor_talking_points", [])
+    talking_points = brief.get("video_talking_points") or brief.get("advisor_talking_points", [])
 
     dot_colors = [ACCENT_GREEN, ACCENT_BLUE, ACCENT_AMBER, (236, 72, 153)]
     y_tp = 272
     for i, point in enumerate(talking_points[:3]):
         color = dot_colors[i % len(dot_colors)]
         draw.ellipse([60, y_tp + 6, 74, y_tp + 20], fill=color)
-        # Use shortened display version so each bullet ends at a natural break point
-        display_text = _shorten_tp_display(point)
+        # video_talking_points are short enough to display clean; fall back truncates gracefully
+        display_text = _clean_display(point) if brief.get("video_talking_points") \
+                       else _shorten_tp_display(point)
         lines = wrap_text(display_text, font_body, 1100, draw)
         for j, line in enumerate(lines[:2]):
             draw.text((90, y_tp + j * 26), line, font=font_body, fill=WHITE if j == 0 else GRAY_LIGHT)
@@ -529,16 +530,16 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
 
     def _tp_to_speech(text: str, idx: int) -> str:
         """
-        Convert a verbose talking point to a short, natural spoken sentence.
-        Extracts just the core action + primary amount + destination (≤ 16 words),
-        converts the imperative verb to gerund, and prepends an ordinal.
+        Convert a verbose talking point into a natural spoken sentence.
+        Cuts at first clause separator to drop methodology/rationale,
+        converts the imperative verb to gerund, caps at 28 words.
         """
         ordinals = ["First,", "Second,", "And third,"]
         prefix = ordinals[idx % len(ordinals)]
 
         cleaned = _fmt_speech(_to_2p(text))
 
-        # Cut at first clause separator so we only speak the core action
+        # Cut at first clause separator so we drop methodology details
         stop_seps = [' - ', ' using ', ' through ', ' while ', ' targeting ',
                      ' consistent with ', ' building ', '; ']
         earliest = len(cleaned)
@@ -549,9 +550,9 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
 
         core = cleaned[:earliest].strip()
 
-        # Hard cap at 16 words so we never over-speak
+        # Cap at 28 words
         words = core.split()
-        core = ' '.join(words[:16]).rstrip('.,;:')
+        core = ' '.join(words[:28]).rstrip('.,;:')
 
         # Convert first word to gerund ("Deploy" → "deploying")
         parts_core = core.split()
@@ -565,24 +566,21 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
     _impact = brief.get("market_impact_summary",  "")
     _action = brief.get("next_action",             "")
 
-    # Build a short, conversational slide 4 narration — NOT reading bullets word-for-word
+    # Build a conversational slide 4 narration — paraphrase, don't read bullets
     _s4 = ["Let me walk you through our key insights and recommendations."]
 
     if _impact:
-        # Max 20 words of market context as a spoken intro
-        _mi_words = _fmt_speech(_to_2p(_impact)).split()
-        _mi_short = ' '.join(_mi_words[:20]).rstrip('.,;') + '.'
-        _s4.append(_mi_short)
+        _s4.append(_fmt_speech(_to_2p(_impact)))
 
     if _tps:
-        _s4.append(f"Based on this, here are our {"three" if len(_tps) >= 3 else "key"} recommendations.")
+        _s4.append(f"Based on this, here are our {'three' if len(_tps) >= 3 else 'key'} recommendations.")
         for i, _tp in enumerate(_tps[:3]):
             _s4.append(_tp_to_speech(_tp, i))
 
     if _action:
         _act_clean = _fmt_speech(_to_2p(_action))
         _act_words = _act_clean.split()
-        _act_short = ' '.join(_act_words[:15]).rstrip('.,;')
+        _act_short = ' '.join(_act_words[:30]).rstrip('.,;')
         _s4.append(f"Your next step is to {_act_short[0].lower()}{_act_short[1:]}.")
 
     _s4.append("We look forward to discussing all of this with you at our next meeting.")
