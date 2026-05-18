@@ -65,6 +65,48 @@ def draw_progress_bar(draw, x, y, w, h, pct, color):
         draw_rounded_rect(draw, [x, y, x + fill_w, y + h], 4, color)
 
 
+def _fmt_speech(text: str) -> str:
+    """Convert text to TTS-friendly spoken form: fix ranges, currencies, special chars."""
+    import re
+    # Normalise any corrupted/unicode dash-like chars to a plain en-dash
+    text = re.sub(r'[–—‒―■⨂�]', '–', text)
+
+    # $XM–$YM  or  $XK–$YM  ranges  →  "X million to Y million dollars"
+    def _money_range(m):
+        def _label(n, s):
+            w = {'M': 'million', 'K': 'thousand', 'B': 'billion'}.get(s.upper(), '')
+            return f"{n} {w} dollars" if w else f"{n} dollars"
+        return f"{_label(m.group(1), m.group(2))} to {_label(m.group(3), m.group(4))}"
+    text = re.sub(
+        r'\$(\d+(?:\.\d+)?)\s*([MKBmkb])\s*–\s*\$(\d+(?:\.\d+)?)\s*([MKBmkb])',
+        _money_range, text)
+
+    # Remaining single $XM / $XK / $XB
+    def _money_single(m):
+        w = {'M': 'million', 'K': 'thousand', 'B': 'billion'}.get(m.group(2).upper(), '')
+        return f"{m.group(1)} {w} dollars" if w else f"{m.group(1)} dollars"
+    text = re.sub(r'\$(\d+(?:\.\d+)?)\s*([MKBmkb])\b', _money_single, text)
+
+    # $1,234,567  →  spoken amount
+    def _money_full(m):
+        n = int(m.group(1).replace(',', ''))
+        if n >= 1_000_000:
+            v = f"{n/1_000_000:.2f}".rstrip('0').rstrip('.')
+            return f"{v} million dollars"
+        if n >= 1_000:
+            return f"{n // 1_000} thousand dollars"
+        return f"{n} dollars"
+    text = re.sub(r'\$(\d{1,3}(?:,\d{3})+)', _money_full, text)
+
+    # Any remaining bare en-dash between numbers → "to"
+    text = re.sub(r'(\d)\s*–\s*(\d)', r'\1 to \2', text)
+
+    # Remove leftover stray dashes that aren't between numbers
+    text = re.sub(r'\s*–\s*', ' ', text)
+
+    return text
+
+
 def wrap_text(text, font, max_width, draw):
     words = text.split()
     lines = []
@@ -293,22 +335,22 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
     draw.text((60, 45), "Key Insights & Next Steps", font=font_title, fill=WHITE)
     draw.rectangle([60, 90, 420, 93], fill=ACCENT_BLUE)
 
-    # Market impact — taller box so 2 lines always fit
+    # Market impact — box tall enough for 3 lines
     font_label = load_font(18)
     font_body = load_font(19)
     market_impact = brief.get("market_impact_summary", "")
-    draw_rounded_rect(draw, [60, 110, 1220, 195], 10, BG_CARD)
+    draw_rounded_rect(draw, [60, 110, 1220, 220], 10, BG_CARD)
     draw.text((80, 118), "Market Impact", font=font_label, fill=ACCENT_AMBER)
     mi_lines = wrap_text(market_impact, font_body, 1110, draw)
-    for k, line in enumerate(mi_lines[:2]):
+    for k, line in enumerate(mi_lines[:3]):
         draw.text((80, 140 + k * 26), line, font=font_body, fill=WHITE)
 
     # Advisor talking points — show 3 only so they always fit above the banner
-    draw.text((60, 212), "Advisor Talking Points", font=load_font(22, bold=True), fill=ACCENT_BLUE)
+    draw.text((60, 235), "Advisor Talking Points", font=load_font(22, bold=True), fill=ACCENT_BLUE)
     talking_points = brief.get("advisor_talking_points", [])
 
     dot_colors = [ACCENT_GREEN, ACCENT_BLUE, ACCENT_AMBER, (236, 72, 153)]
-    y_tp = 250
+    y_tp = 272
     for i, point in enumerate(talking_points[:3]):
         color = dot_colors[i % len(dot_colors)]
         draw.ellipse([60, y_tp + 6, 74, y_tp + 20], fill=color)
@@ -319,7 +361,7 @@ def make_insights_slide(client: dict, brief: dict) -> Image.Image:
 
     # Next action banner — tall enough for 3 lines, with white label on green bg
     next_action = brief.get("next_action", "")
-    banner_y0, banner_y1 = 545, 665
+    banner_y0, banner_y1 = 565, 682
     draw_rounded_rect(draw, [60, banner_y0, 1220, banner_y1], 12, ACCENT_GREEN)
     draw.text((85, banner_y0 + 10), "Recommended Next Action",
               font=load_font(18, bold=True), fill=WHITE)
@@ -417,13 +459,13 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
             " ".join(words[chunk * 3:]),
         ]
 
-    # Always rebuild slide 4 narration — conversational, second-person, not word-for-word.
+    # Always rebuild slide 4 narration — conversational, second-person, speech-friendly.
     import re as _re
 
     first_name = client.get("name", "").split()[0]
 
-    def _to_second_person(text: str) -> str:
-        """Replace client name and third-person pronouns with second-person."""
+    def _to_2p(text: str) -> str:
+        """Third-person → second-person for the client."""
         if first_name:
             text = _re.sub(rf"\b{_re.escape(first_name)}'s\b", "your", text, flags=_re.IGNORECASE)
             text = _re.sub(rf"\b{_re.escape(first_name)}\b",   "you",  text, flags=_re.IGNORECASE)
@@ -432,17 +474,20 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
         text = _re.sub(r"\bhe\b",  "you",  text)
         return text
 
-    def _first_clause(text: str, max_words: int = 22) -> str:
-        """Take the first natural clause — avoids reading the full verbose bullet."""
+    def _first_sentence(text: str, max_words: int = 45) -> str:
+        """Return the first complete sentence, capped at max_words."""
+        m = _re.search(r'\.\s', text)
+        if m and len(text[:m.start()].split()) <= max_words:
+            return text[:m.start() + 1]
         words = text.split()
         if len(words) <= max_words:
             return text
         chunk = " ".join(words[:max_words])
         for sep in [",", ";"]:
             idx = chunk.rfind(sep)
-            if idx > len(chunk) * 0.55:
-                return chunk[:idx]
-        return chunk
+            if idx > len(chunk) * 0.6:
+                return chunk[:idx] + "."
+        return chunk + "."
 
     _tps    = brief.get("advisor_talking_points", [])
     _impact = brief.get("market_impact_summary",  "")
@@ -450,14 +495,16 @@ def generate_video(client: dict, market_data: dict, brief: dict, output_path: st
 
     _s4 = []
     if _impact:
-        _s4.append(_to_second_person(_impact))
+        _s4.append(_fmt_speech(_to_2p(_impact)))
     _transitions = ["Here's what we recommend.", "Next,", "And finally,"]
     for i, _tp in enumerate(_tps[:3]):
-        _clause = _first_clause(_to_second_person(_tp))
+        _sentence = _first_sentence(_fmt_speech(_to_2p(_tp)))
         _prefix = _transitions[i] if i < len(_transitions) else ""
-        _s4.append(f"{_prefix} {_clause}.".strip())
+        _s4.append(f"{_prefix} {_sentence}".strip())
     if _action:
-        _s4.append(f"Your recommended next step: {_to_second_person(_first_clause(_action, max_words=30))}.")
+        _s4.append(f"Your recommended next step: {_fmt_speech(_to_2p(_first_sentence(_action, max_words=35)))}")
+    # Warm closing — avoids the abrupt cut-off
+    _s4.append(f"I look forward to discussing this with you at our next meeting.")
     parts[3] = " ".join(_s4)
 
     slides_fns = [make_cover_slide, make_performance_slide, make_market_slide, make_insights_slide]
