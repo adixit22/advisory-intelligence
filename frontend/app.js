@@ -615,9 +615,13 @@ function openEmailModal(type) {
   } else {
     document.getElementById('modal-title').textContent = '✉️ Send Summary to Client';
     document.getElementById('modal-subject').value = `Portfolio Update — ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-    const summary = brief?.client_summary?.split('\n\n')[0] || '';
+    const firstName = c.name.split(' ')[0];
+    let summary = brief?.client_summary?.split('\n\n')[0] || '';
+    // Strip leading "Robert, " or "Robert " that Claude adds — greeting already has the name
+    summary = summary.replace(new RegExp(`^${firstName}[,.]?\\s*`, 'i'), '');
+    summary = summary.charAt(0).toUpperCase() + summary.slice(1);
     document.getElementById('modal-body').value =
-      `Dear ${c.name.split(' ')[0]},\n\n${summary}\n\nI look forward to speaking with you soon.\n\nBest regards,\nYour Advisor`;
+      `Dear ${firstName},\n\n${summary}\n\nI look forward to speaking with you soon.\n\nBest regards,\nYour Advisor`;
   }
 
   modal.classList.add('open');
