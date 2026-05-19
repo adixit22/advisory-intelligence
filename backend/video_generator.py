@@ -347,7 +347,7 @@ def make_market_slide(market_data: dict) -> Image.Image:
         val_str = f"${value:,.0f}" if isinstance(value, (int, float)) and value > 1000 else f"{value}{unit}" if isinstance(value, (int, float)) else str(value)
         draw.text((x + 18, y + 45), val_str, font=font_fval, fill=val_color)
 
-        chg_str = f"{'▲' if chg >= 0 else '▼'} {abs(chg):.2f}%"
+        chg_str = f"{'+' if chg >= 0 else '-'} {abs(chg):.2f}%"
         draw.text((x + 18, y + 110), chg_str, font=font_fchg, fill=chg_color)
 
         desc = factor.get("description", "")
